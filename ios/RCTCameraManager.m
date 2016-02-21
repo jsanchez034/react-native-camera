@@ -133,6 +133,11 @@ RCT_EXPORT_VIEW_PROPERTY(onZoomChanged, BOOL)
 
 - (id)init {
 
+    NSDictionary *options = @{ kCIContextWorkingColorSpace : [NSNull null] };
+    EAGLContext *myEAGLContext = [[EAGLContext alloc] initWithAPI:kEAGLRenderingAPIOpenGLES2];
+
+    self.ciContext = [CIContext contextWithEAGLContext:myEAGLContext options:options];
+
   if ((self = [super init])) {
 
     self.session = [AVCaptureSession new];
@@ -142,6 +147,9 @@ RCT_EXPORT_VIEW_PROPERTY(onZoomChanged, BOOL)
     self.previewLayer.needsDisplayOnBoundsChange = YES;
 
     self.sessionQueue = dispatch_queue_create("cameraManagerQueue", DISPATCH_QUEUE_SERIAL);
+    self.xPixelPosition = 0;
+    self.yPixelPosition = 0;
+    self.rPixelArea = 60;
 
 
   }
@@ -263,12 +271,25 @@ RCT_EXPORT_METHOD(capture:(NSDictionary *)options
   else if (captureMode == RCTCameraCaptureModeVideo) {
     [self captureVideo:captureTarget options:options resolve:resolve reject:reject];
   }
+
+
 }
 
 RCT_EXPORT_METHOD(stopCapture) {
   if (self.movieFileOutput.recording) {
     [self.movieFileOutput stopRecording];
   }
+}
+
+RCT_EXPORT_METHOD(setCameraBounds:(float)w h:(float)h) {
+    self.cameraBoundWidth = w;
+    self.cameraBoundHeight = h;
+}
+
+RCT_EXPORT_METHOD(setColorPoint:(float)x y:(float)y r:(float)r) {
+    self.xPixelPosition = x;
+    self.yPixelPosition = y;
+    self.rPixelArea = r;
 }
 
 RCT_EXPORT_METHOD(getFOV:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
@@ -325,12 +346,12 @@ RCT_EXPORT_METHOD(hasFlash:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRej
       self.stillImageOutput = stillImageOutput;
     }
 
-    AVCaptureMovieFileOutput *movieFileOutput = [[AVCaptureMovieFileOutput alloc] init];
-    if ([self.session canAddOutput:movieFileOutput])
-    {
-      [self.session addOutput:movieFileOutput];
-      self.movieFileOutput = movieFileOutput;
-    }
+    // AVCaptureMovieFileOutput *movieFileOutput = [[AVCaptureMovieFileOutput alloc] init];
+    // if ([self.session canAddOutput:movieFileOutput])
+    // {
+    //   [self.session addOutput:movieFileOutput];
+    //   self.movieFileOutput = movieFileOutput;
+    // }
 
     AVCaptureMetadataOutput *metadataOutput = [[AVCaptureMetadataOutput alloc] init];
     if ([self.session canAddOutput:metadataOutput]) {
@@ -338,6 +359,13 @@ RCT_EXPORT_METHOD(hasFlash:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRej
       [self.session addOutput:metadataOutput];
       [metadataOutput setMetadataObjectTypes:metadataOutput.availableMetadataObjectTypes];
       self.metadataOutput = metadataOutput;
+    }
+
+    AVCaptureVideoDataOutput *rawVideoOutput = [[AVCaptureVideoDataOutput alloc] init];
+    if ([self.session canAddOutput:rawVideoOutput])
+    {
+      [self.session addOutput:rawVideoOutput];
+      self.rawVideoOutput = rawVideoOutput;
     }
 
     __weak RCTCameraManager *weakSelf = self;
@@ -350,6 +378,7 @@ RCT_EXPORT_METHOD(hasFlash:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRej
     }]];
 
     [self.session startRunning];
+           [self captureRawVideo];
   });
 }
 
@@ -526,18 +555,18 @@ RCT_EXPORT_METHOD(hasFlash:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRej
   else if (target == RCTCameraCaptureTargetDisk) {
     NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
     NSString *documentsDirectory = [paths firstObject];
-      
+
     NSFileManager *fileManager = [NSFileManager defaultManager];
     NSString *fullPath = [[documentsDirectory stringByAppendingPathComponent:[[NSUUID UUID] UUIDString]] stringByAppendingPathExtension:@"jpg"];
-    
+
     [fileManager createFileAtPath:fullPath contents:imageData attributes:nil];
     responseString = fullPath;
   }
-    
+
   else if (target == RCTCameraCaptureTargetTemp) {
     NSString *fileName = [[NSProcessInfo processInfo] globallyUniqueString];
     NSString *fullPath = [NSString stringWithFormat:@"%@%@.jpg", NSTemporaryDirectory(), fileName];
-      
+
     [imageData writeToFile:fullPath atomically:YES];
     responseString = fullPath;
   }
@@ -585,6 +614,23 @@ RCT_EXPORT_METHOD(hasFlash:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRej
   return rotatedImage;
 }
 
+-(void)captureRawVideo {
+  dispatch_queue_t queue = dispatch_queue_create("myQueue", NULL);
+  [self.rawVideoOutput setSampleBufferDelegate:self queue:queue];
+  //dispatch_release(queue);
+
+  // Specify the pixel format
+  self.rawVideoOutput.videoSettings =
+              [NSDictionary dictionaryWithObject:
+                  [NSNumber numberWithInt:kCVPixelFormatType_32BGRA]
+                  forKey:(id)kCVPixelBufferPixelFormatTypeKey];
+
+
+  // If you wish to cap the frame rate to a known value, such as 15 fps, set
+  // minFrameDuration.
+  self.rawVideoOutput.minFrameDuration = CMTimeMake(1, 15);
+}
+
 -(void)captureVideo:(NSInteger)target options:(NSDictionary *)options resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject {
 
   if (self.movieFileOutput.recording) {
@@ -625,6 +671,50 @@ RCT_EXPORT_METHOD(hasFlash:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRej
     self.videoReject = reject;
     self.videoTarget = target;
   });
+}
+
+- (void)captureOutput:(AVCaptureOutput *)captureOutput
+         didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
+         fromConnection:(AVCaptureConnection *)connection
+{
+    CVPixelBufferRef imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
+
+    CIImage *cameraImage = [CIImage imageWithCVPixelBuffer:imageBuffer];
+    CGFloat cameraWidthFactor = cameraImage.extent.size.width / self.cameraBoundWidth;
+    CGFloat cameraHeightFactor = cameraImage.extent.size.height / self.cameraBoundHeight;
+
+    CIVector *inputExtent = [CIVector vectorWithX:(self.xPixelPosition * cameraWidthFactor) - (self.rPixelArea/2) Y:(self.yPixelPosition * cameraHeightFactor) - (self.rPixelArea/2) Z:self.rPixelArea W:self.rPixelArea];
+
+    CIFilter *averageImageFilter = [CIFilter filterWithName: @"CIAreaAverage"
+        withInputParameters:  @{
+            @"inputImage": cameraImage,
+            @"inputExtent": inputExtent
+            }];
+
+    CIImage *averageImage = averageImageFilter.outputImage;
+    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+
+    size_t rowBytes = 4 ; // ARGB has 4 components
+    uint8_t byteBuffer[rowBytes]; // Buffer to render into
+
+    [self.ciContext render: averageImage
+        toBitmap: byteBuffer
+        rowBytes: rowBytes
+        bounds: averageImage.extent
+        format: kCIFormatRGBA8
+           colorSpace: colorSpace];
+
+    CGColorSpaceRelease(colorSpace);
+
+    const uint8_t* pixel = &byteBuffer[0];
+
+    NSDictionary *event = @{
+      @"r": [NSString stringWithFormat:@"%d", pixel[0]],
+      @"g": [NSString stringWithFormat:@"%d", pixel[1]],
+      @"b": [NSString stringWithFormat:@"%d", pixel[2]]
+    };
+
+    [self.bridge.eventDispatcher sendAppEventWithName:@"CameraPixelColorChanged" body:event];
 }
 
 - (void)captureOutput:(AVCaptureFileOutput *)captureOutput
@@ -677,10 +767,10 @@ didFinishRecordingToOutputFileAtURL:(NSURL *)outputFileURL
   else if (self.videoTarget == RCTCameraCaptureTargetTemp) {
     NSString *fileName = [[NSProcessInfo processInfo] globallyUniqueString];
     NSString *fullPath = [NSString stringWithFormat:@"%@%@.mov", NSTemporaryDirectory(), fileName];
-    
+
     NSFileManager * fileManager = [NSFileManager defaultManager];
     NSError * error = nil;
-      
+
     //copying destination
     if (!([fileManager copyItemAtPath:[outputFileURL path] toPath:fullPath error:&error])) {
         self.videoReject(RCTErrorUnspecified, nil, RCTErrorWithMessage(error.description));
@@ -698,7 +788,7 @@ didFinishRecordingToOutputFileAtURL:(NSURL *)outputFileURL
   for (AVMetadataMachineReadableCodeObject *metadata in metadataObjects) {
     for (id barcodeType in [self getBarCodeTypes]) {
       if (metadata.type == barcodeType) {
-        
+
         NSDictionary *event = @{
           @"type": metadata.type,
           @"data": metadata.stringValue,
@@ -828,7 +918,7 @@ didFinishRecordingToOutputFileAtURL:(NSURL *)outputFileURL
           @"zoomFactor": [NSNumber numberWithDouble:zoomFactor],
           @"velocity": [NSNumber numberWithDouble:velocity]
         };
-      
+
         [self.bridge.eventDispatcher sendInputEventWithName:@"zoomChanged" body:event];
 
         device.videoZoomFactor = zoomFactor;

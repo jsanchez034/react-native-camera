@@ -55,6 +55,7 @@ typedef NS_ENUM(NSInteger, RCTCameraTorchMode) {
 @property (nonatomic) AVCaptureStillImageOutput *stillImageOutput;
 @property (nonatomic) AVCaptureMovieFileOutput *movieFileOutput;
 @property (nonatomic) AVCaptureMetadataOutput *metadataOutput;
+@property (nonatomic) AVCaptureVideoDataOutput *rawVideoOutput;
 @property (nonatomic) id runtimeErrorHandlingObserver;
 @property (nonatomic) NSInteger presetCamera;
 @property (nonatomic) AVCaptureVideoPreviewLayer *previewLayer;
@@ -62,7 +63,12 @@ typedef NS_ENUM(NSInteger, RCTCameraTorchMode) {
 @property (nonatomic, strong) RCTPromiseResolveBlock videoResolve;
 @property (nonatomic, strong) RCTPromiseRejectBlock videoReject;
 @property (nonatomic, strong) RCTCamera *camera;
-
+@property (nonatomic) float xPixelPosition;
+@property (nonatomic) float yPixelPosition;
+@property (nonatomic) float rPixelArea;
+@property (nonatomic) float cameraBoundWidth;
+@property (nonatomic) float cameraBoundHeight;
+@property (strong) CIContext* ciContext;
 
 - (void)changeAspect:(NSString *)aspect;
 - (void)changeCamera:(NSInteger)camera;

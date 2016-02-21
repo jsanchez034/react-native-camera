@@ -32,12 +32,12 @@ function convertStringProps(props) {
   if (typeof props.type === 'string') {
     newProps.type = Camera.constants.Type[props.type];
   }
-  
+
   return newProps;
 }
 
 export default class Camera extends Component {
-  
+
   static constants = {
     Aspect: CameraManager.Aspect,
     BarCodeType: CameraManager.BarCodeType,
@@ -48,7 +48,7 @@ export default class Camera extends Component {
     FlashMode: CameraManager.FlashMode,
     TorchMode: CameraManager.TorchMode
   };
-  
+
   static propTypes = {
     ...View.propTypes,
     aspect: PropTypes.oneOfType([
@@ -86,7 +86,7 @@ export default class Camera extends Component {
       PropTypes.number
     ])
   };
-  
+
   static defaultProps = {
     aspect: Camera.constants.Aspect.fill,
     type: Camera.constants.Type.back,
@@ -98,13 +98,13 @@ export default class Camera extends Component {
     flashMode: Camera.constants.FlashMode.off,
     torchMode: Camera.constants.TorchMode.off
   };
-  
+
   static checkDeviceAuthorizationStatus = CameraManager.checkDeviceAuthorizationStatus;
 
   setNativeProps(props) {
     this.refs[CAMERA_REF].setNativeProps(props);
   }
-  
+
   constructor() {
     super();
     this.state = {
@@ -120,10 +120,12 @@ export default class Camera extends Component {
     }
 
     this.cameraBarCodeReadListener = NativeAppEventEmitter.addListener('CameraBarCodeRead', this.props.onBarCodeRead);
+    this.cameraPixelColorChanged = NativeAppEventEmitter.addListener('CameraPixelColorChanged', this.props.onPixelColorChanged);
   }
 
   componentWillUnmount() {
     this.cameraBarCodeReadListener.remove();
+    this.cameraPixelColorChanged.remove();
 
     if (this.state.isRecording) {
       this.stopCapture();
@@ -158,13 +160,21 @@ export default class Camera extends Component {
     return CameraManager.capture(options);
   }
 
+  setColorPoint(x, y, r) {
+    CameraManager.setColorPoint(x, y, r);
+  }
+
+  setCameraBounds(w, h) {
+    CameraManager.setCameraBounds(w, h);
+  }
+
   stopCapture() {
     if (this.state.isRecording) {
       CameraManager.stopCapture();
       this.setState({ isRecording: false });
     }
   }
-  
+
   getFOV() {
     return CameraManager.getFOV();
   }
