@@ -677,44 +677,49 @@ RCT_EXPORT_METHOD(hasFlash:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRej
          didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
          fromConnection:(AVCaptureConnection *)connection
 {
-    CVPixelBufferRef imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
+  CVPixelBufferRef imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
 
-    CIImage *cameraImage = [CIImage imageWithCVPixelBuffer:imageBuffer];
-    CGFloat cameraWidthFactor = cameraImage.extent.size.width / self.cameraBoundWidth;
-    CGFloat cameraHeightFactor = cameraImage.extent.size.height / self.cameraBoundHeight;
+  CIImage *cameraImage = [CIImage imageWithCVPixelBuffer:imageBuffer];
 
-    CIVector *inputExtent = [CIVector vectorWithX:(self.xPixelPosition * cameraWidthFactor) - (self.rPixelArea/2) Y:(self.yPixelPosition * cameraHeightFactor) - (self.rPixelArea/2) Z:self.rPixelArea W:self.rPixelArea];
+  CGFloat cameraWidthFactor = cameraImage.extent.size.width / self.cameraBoundWidth;
+  CGFloat cameraHeightFactor = cameraImage.extent.size.height / self.cameraBoundHeight;
 
-    CIFilter *averageImageFilter = [CIFilter filterWithName: @"CIAreaAverage"
-        withInputParameters:  @{
-            @"inputImage": cameraImage,
-            @"inputExtent": inputExtent
-            }];
+  CIVector *inputExtent = [CIVector
+              vectorWithX:(self.xPixelPosition * cameraWidthFactor) - (self.rPixelArea/2)
+              Y:(self.yPixelPosition * cameraHeightFactor) - (self.rPixelArea/2)
+              Z:self.rPixelArea
+              W:self.rPixelArea];
 
-    CIImage *averageImage = averageImageFilter.outputImage;
-    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+  CIFilter *averageImageFilter = [CIFilter filterWithName: @"CIAreaAverage"
+      withInputParameters:  @{
+          @"inputImage": cameraImage,
+          @"inputExtent": inputExtent
+          }];
 
-    size_t rowBytes = 4 ; // ARGB has 4 components
-    uint8_t byteBuffer[rowBytes]; // Buffer to render into
+  CIImage *averageImage = averageImageFilter.outputImage;
+  CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
 
-    [self.ciContext render: averageImage
-        toBitmap: byteBuffer
-        rowBytes: rowBytes
-        bounds: averageImage.extent
-        format: kCIFormatRGBA8
-           colorSpace: colorSpace];
+  size_t rowBytes = 4 ; // ARGB has 4 components
+  uint8_t byteBuffer[rowBytes]; // Buffer to render into
 
-    CGColorSpaceRelease(colorSpace);
+  [self.ciContext render: averageImage
+      toBitmap: byteBuffer
+      rowBytes: rowBytes
+      bounds: averageImage.extent
+      format: kCIFormatRGBA8
+         colorSpace: colorSpace];
 
-    const uint8_t* pixel = &byteBuffer[0];
+  const uint8_t* pixel = &byteBuffer[0];
 
-    NSDictionary *event = @{
-      @"r": [NSString stringWithFormat:@"%d", pixel[0]],
-      @"g": [NSString stringWithFormat:@"%d", pixel[1]],
-      @"b": [NSString stringWithFormat:@"%d", pixel[2]]
-    };
+  NSDictionary *event = @{
+    @"r": [NSString stringWithFormat:@"%d", pixel[0]],
+    @"g": [NSString stringWithFormat:@"%d", pixel[1]],
+    @"b": [NSString stringWithFormat:@"%d", pixel[2]]
+  };
 
-    [self.bridge.eventDispatcher sendAppEventWithName:@"CameraPixelColorChanged" body:event];
+  [self.bridge.eventDispatcher sendAppEventWithName:@"CameraPixelColorChanged" body:event];
+
+  CGColorSpaceRelease(colorSpace);
 }
 
 - (void)captureOutput:(AVCaptureFileOutput *)captureOutput
