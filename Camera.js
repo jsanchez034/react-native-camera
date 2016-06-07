@@ -1,8 +1,7 @@
-import React, {
-  Component,
+import React, { Component, PropTypes } from 'react';
+import {
   NativeAppEventEmitter,
   NativeModules,
-  PropTypes,
   StyleSheet,
   requireNativeComponent,
   View,
@@ -88,15 +87,16 @@ export default class Camera extends Component {
   };
 
   static defaultProps = {
-    aspect: Camera.constants.Aspect.fill,
-    type: Camera.constants.Type.back,
-    orientation: Camera.constants.Orientation.auto,
+    aspect: CameraManager.Aspect.fill,
+    type: CameraManager.Type.back,
+    orientation: CameraManager.Orientation.auto,
     captureAudio: true,
-    captureMode: Camera.constants.CaptureMode.still,
-    captureTarget: Camera.constants.CaptureTarget.cameraRoll,
+    captureMode: CameraManager.CaptureMode.still,
+    captureTarget: CameraManager.CaptureTarget.cameraRoll,
     defaultOnFocusComponent: true,
-    flashMode: Camera.constants.FlashMode.off,
-    torchMode: Camera.constants.TorchMode.off
+    flashMode: CameraManager.FlashMode.off,
+    playSoundOnCapture: true,
+    torchMode: CameraManager.TorchMode.off,
   };
 
   static checkDeviceAuthorizationStatus = CameraManager.checkDeviceAuthorizationStatus;
@@ -105,8 +105,8 @@ export default class Camera extends Component {
     this.refs[CAMERA_REF].setNativeProps(props);
   }
 
-  constructor() {
-    super();
+  constructor(props) {
+    super(props || null);
     this.state = {
       isAuthorized: false,
       isRecording: false
@@ -120,12 +120,12 @@ export default class Camera extends Component {
     }
 
     this.cameraBarCodeReadListener = NativeAppEventEmitter.addListener('CameraBarCodeRead', this.props.onBarCodeRead);
-    this.cameraPixelColorChanged = NativeAppEventEmitter.addListener('CameraPixelColorChanged', this.props.onPixelColorChanged);
+    this.averageColorChanged = NativeAppEventEmitter.addListener('AverageColorChanged', this.props.onAverageColorChanged);
   }
 
   componentWillUnmount() {
     this.cameraBarCodeReadListener.remove();
-    this.cameraPixelColorChanged.remove();
+    this.averageColorChanged.remove();
 
     if (this.state.isRecording) {
       this.stopCapture();
@@ -183,6 +183,8 @@ export default class Camera extends Component {
     return CameraManager.hasFlash();
   }
 }
+
+export const constants = Camera.constants;
 
 const RCTCamera = requireNativeComponent('RCTCamera', Camera);
 
